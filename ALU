@@ -1,0 +1,110 @@
+LIBRARY ieee; 
+USE ieee.std_logic_1164.all;
+USE ieee.std_logic_misc.all;
+USE ieee.std_logic_arith.all;
+USE ieee.std_logic_unsigned.all;
+----------------------------------------------------------------
+ENTITY ALU is
+	GENERIC(N:integer:=8); 
+	PORT(shift_dir,sl,sr:IN STD_LOGIC;
+	     opcode : IN STD_LOGIC_VECTOR(3 downto 0):="0010";
+	     sel : IN STD_LOGIC_VECTOR(3 downto 0):="0000";
+	     
+	     Ain,Bin: IN STD_LOGIC_VECTOR(N-1 downto 0);
+	     Cin    : IN STD_LOGIC:='0';
+	
+	     memdata: IN STD_LOGIC_VECTOR(N-1 downto 0);
+	     memack : IN STD_LOGIC;
+	
+	     ALUout,ACC : OUT STD_LOGIC_VECTOR(N-1 downto 0);
+	     Cout       : OUT STD_LOGIC:='0');
+END ALU; 
+
+ARCHITECTURE ALU of ALU is
+SIGNAL a,b,and_sgnl,or_sgnl,xor_sgnl,twos_sgnl:STD_LOGIC_VECTOR(N-1 downto 0);    
+SIGNAL internal,x,nil  :STD_LOGIC_VECTOR(N-1 downto 0);
+SIGNAL blk_code  :STD_LOGIC_VECTOR(3 downto 0);
+SIGNAL flg                      :STD_LOGIC;
+
+COMPONENT AS
+ GENERIC(N:integer:=8);
+ PORT (as    :IN  STD_LOGIC_VECTOR(3 downto 0); 
+       A,B   :IN  STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+       Cin   :IN  STD_LOGIC;
+       S     :OUT STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+       Cout  :OUT STD_LOGIC:='0'); 
+END COMPONENT;
+
+COMPONENT and_ab
+  port ( and_in1,and_in2 : IN  STD_LOGIC;
+         and_out         : OUT STD_LOGIC);
+END COMPONENT;
+
+COMPONENT or_ab
+  PORT (or_in1,or_in2 : IN  STD_LOGIC;
+        or_out        : OUT STD_LOGIC);
+END COMPONENT;
+
+COMPONENT xor_ab
+  PORT (xor_in1,xor_in2 : IN  STD_LOGIC;
+        xor_out         : OUT STD_LOGIC);
+END COMPONENT;
+
+COMPONENT not_ab
+  PORT (not_in1,not_in2 : IN  STD_LOGIC;
+        not_out         : OUT STD_LOGIC);
+END COMPONENT;
+
+COMPONENT twos_complement
+  PORT (subtractand : IN  STD_LOGIC_VECTOR(N-1 downto 0);
+        twos        : OUT STD_LOGIC_VECTOR(N-1 downto 0));
+END COMPONENT;
+
+COMPONENT shift_reg
+  PORT (clk,shift_dir,sl,sr:IN STD_LOGIC;
+        shift: INOUT STD_LOGIC_VECTOR(N-1 downto 0));
+END COMPONENT;
+
+COMPONENT flag_mux
+  PORT (a,b  : IN  STD_LOGIC_VECTOR(N-1 downto 0);  
+        flag : OUT STD_LOGIC);
+END COMPONENT;
+-----------------------------------------------------------------------
+BEGIN
+nil <= (others => '0');  
+ALU_00100000:if (opcode="0010" and sel="0000") generate
+  addr : AS PORT MAP (Sel,Ain,Bin,Cin,ALUout,Cout);  
+end generate;
+   
+--blkadder: BLOCK(opcode="0010" and sel="0000")
+-- BEGIN
+--  addr : AS PORT MAP (Sel,Ain,Bin,Cin,ALUout,Cout);  
+--  blk_code <= opcode; 
+--END BLOCK blkadder;
+ 		                    
+-- blksubtractor: BLOCK(opcode="0010" and sel="0010")
+--  BEGIN
+--  blk_code <= opcode;   
+  --subtractor : AS PORT MAP (sel,a,b,'0',Sout,Cout,blk_tst);		   
+-- END BLOCK blksubtractor;		                                                      
+    
+-----------------------------------------------------------------------------------------------------------
+--opcode_mux16 : mux16 PORT MAP(sout,sout,and_sgnl,or_sgnl,xor_sgnl,twos_sgnl,b,x,x,memdata,flg,opcode,sout);   
+-----------------------------------------------------------------------------------------------------------
+-- accumulator: PROCESS (clk) IS
+--	BEGIN
+--	IF(clk'event and clk = '1') THEN	  
+--	 IF opcode = "1111" THEN  
+--   IF ( shift_dir = '0') then
+--  	sout <= sout(N-2 downto 0) & sl;
+--   ELSE
+--   sout <= sr & sout(N-1 downto 1);
+--   END IF;
+--	 END IF;   
+	
+--	a <= Ain;
+--	b <= Bin;
+--	ACC <= sout;
+--	END IF;
+-- END PROCESS accumulator;	
+END ALU;		

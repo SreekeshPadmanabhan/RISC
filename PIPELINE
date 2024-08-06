@@ -1,0 +1,133 @@
+--==========================================================================================
+-- fetch : Fetches Instruction pointed by PC
+--==========================================================================================
+LIBRARY ieee; 
+USE ieee.std_logic_1164.all;
+USE ieee.std_logic_misc.all;
+USE ieee.std_logic_arith.all;
+USE ieee.std_logic_unsigned.all;
+USE ieee.std_logic_arith.all;
+use IEEE.numeric_std.ALL;
+USE WORK.reg_dmem.ALL;
+
+ENTITY pipeline is
+  GENERIC(N:integer:=16);
+  PORT (clk,rst     : IN  STD_LOGIC;
+        PCAddr      : INOUT  STD_LOGIC_VECTOR(11 DOWNTO 0);
+        MEMAddr     : BUFFER STD_LOGIC_VECTOR(11 DOWNTO 0);
+        Interrupts  : INOUT STD_LOGIC_VECTOR(3 DOWNTO 0) := "0000");        --4Intrrpt
+END pipeline;
+        
+ARCHITECTURE pipeline OF pipeline IS 
+signal instruction          : STD_LOGIC_VECTOR(15 DOWNTO 0); 
+signal ALUop,sel,Rdx,Rdy,wr : STD_LOGIC_VECTOR(3 DOWNTO 0):="0000";              --ALU 
+
+signal IMdata,WrBk     : STD_LOGIC_VECTOR(7 DOWNTO 0);
+signal Rls             : STD_LOGIC_VECTOR(7 DOWNTO 0); 
+signal ROI             : STD_LOGIC_VECTOR(1 DOWNTO 0):="00";
+signal LS,RI,RET : STD_LOGIC;
+
+signal ALUout,ACC,memd : STD_LOGIC_VECTOR(7 DOWNTO 0);                       --#address
+signal Offset          : STD_LOGIC_VECTOR(7 DOWNTO 0);                        --BrnchTo 
+signal RegWr,RegWrEXE  : STD_LOGIC;
+signal WrOut           : STD_LOGIC_VECTOR(3 DOWNTO 0);                           --WrBk
+signal LSOut           : STD_LOGIC;                               --Ld/Str Rgstr/Indrct
+signal IHInterrupts    : STD_LOGIC_VECTOR(3 DOWNTO 0):="0000";                --Clk 2
+signal ClkCycle        : STD_LOGIC_VECTOR(1 DOWNTO 0);                         --Clk 2
+signal rgstr,rgstr_bnk : rgstrs;
+-----------------------------------------------------------------------------------------                                   
+COMPONENT fetch
+PORT (clk,rst     : IN  STD_LOGIC;
+      PCAddr      : INOUT  STD_LOGIC_VECTOR(11 DOWNTO 0);
+      MEMAddr     : BUFFER STD_LOGIC_VECTOR(11 DOWNTO 0);
+      instruction : BUFFER STD_LOGIC_VECTOR(15 DOWNTO 0));
+        
+END COMPONENT;
+
+COMPONENT Decoder
+ PORT(clk         : IN STD_LOGIC;
+      instruction : IN STD_LOGIC_VECTOR(15 DOWNTO 0):="0000000000000000";    --Frm IMEM
+      Interrupts  : INOUT STD_LOGIC_VECTOR(3 DOWNTO 0) := "0000";            --4Intrrpt
+      
+      ALUop,SEL   : OUT STD_LOGIC_VECTOR(3 DOWNTO 0):="0000";                --ALU  [ok]
+      Rdx,Rdy,Wr  : OUT STD_LOGIC_VECTOR(3 DOWNTO 0):="0000";                --RB 
+       
+      PCAddr      : INOUT STD_LOGIC_VECTOR(11 DOWNTO 0);                     --+ Offset
+      Offset      : OUT   STD_LOGIC_VECTOR(7 DOWNTO 0);                     --BrnchTo --11**
+      
+      IMdata,Rls  : OUT STD_LOGIC_VECTOR(7 DOWNTO 0):="00000000";            --Imm/#addrss@(R LS)  
+      ROI         : OUT STD_LOGIC_VECTOR(1 DOWNTO 0):="00";
+      LS,RI       : OUT STD_LOGIC;                                          --IM control/DMEM
+      
+      RegWr,RET   : OUT STD_LOGIC );   
+END COMPONENT;  
+
+COMPONENT execute 
+  GENERIC(N:integer:=16);       
+  PORT (clk                 : IN STD_LOGIC;
+        ALUopEXE,SelEXE     : IN STD_LOGIC_VECTOR(3 DOWNTO 0);                    --ALU
+        RdxEXE,RdyEXE       : IN STD_LOGIC_VECTOR(3 DOWNTO 0);                     --RB
+        WrIn                : IN STD_LOGIC_VECTOR(3 DOWNTO 0);                        --WrBk
+        WrOut               : BUFFER STD_LOGIC_VECTOR(3 DOWNTO 0);                    --WrBk
+        OffsetEXE           : IN STD_LOGIC_VECTOR(7 DOWNTO 0);               --BrnchTo 11**
+        IMdataEXE           : IN STD_LOGIC_VECTOR(7 DOWNTO 0);                    --IMM 
+        ROIEXE              : IN STD_LOGIC_VECTOR(1 DOWNTO 0):="00";    --Ry/Offset/IM?
+       
+        LSIn,RIEXE          : IN STD_LOGIC;                            --Ld/Str Rgstr/Indrct
+        LSOut               : BUFFER STD_LOGIC;                            --Ld/Str Rgstr/Indrct
+        RlsEXE,WrBk         : IN STD_LOGIC_VECTOR(7 DOWNTO 0);           --#addrss@(R LS)
+        RegWrEXE            : IN STD_LOGIC;                          --Wr:0 Rd:1;Wr Rgstr?
+        RETIn               : IN STD_LOGIC;
+        RETOut              : OUT STD_LOGIC;
+        
+        memd                : BUFFER STD_LOGIC_VECTOR(7 DOWNTO 0);            --DMEM data                     
+        ALUout,ACC          : OUT STD_LOGIC_VECTOR(7 downto 0);                     --ALU 
+        
+        rgstr_bnk           : OUT rgstrs;                                       --Copy2SP
+        InterruptsIn        : IN STD_LOGIC_VECTOR(3 DOWNTO 0):="0000";
+        InterruptsOut       : BUFFER STD_LOGIC_VECTOR(3 DOWNTO 0):="0000");       --Clk 2
+END COMPONENT;  
+
+COMPONENT WriteBK
+ PORT(clk         : IN  STD_LOGIC;
+      LS          : IN  STD_LOGIC;
+      RegWr       : IN  STD_LOGIC;  
+      Wr          : IN  STD_LOGIC_VECTOR(3 DOWNTO 0);                  
+      memd        : IN  STD_LOGIC_VECTOR(7 DOWNTO 0);          
+               
+      Interrupts  : IN  STD_LOGIC_VECTOR(3 DOWNTO 0);               --Copy2SP
+      ClkCycle    : OUT STD_LOGIC_VECTOR(1 DOWNTO 0);              --Clk 2
+      rgstr_bnk   : OUT rgstrs);
+ END COMPONENT;   
+ 
+COMPONENT InterruptHandler
+ PORT(Interrupts  : IN STD_LOGIC_VECTOR(3 DOWNTO 0);
+      
+      ClkCycle    : IN STD_LOGIC_VECTOR(1 DOWNTO 0);                            
+      RETI        : INOUT STD_LOGIC;                                        
+      
+      MEMAddr     : INOUT STD_LOGIC_VECTOR(11 DOWNTO 0);
+      rgstr_bnk   : INOUT rgstrs;      
+      PCAddrIntr  : OUT STD_LOGIC_VECTOR(11 DOWNTO 0));                   
+END COMPONENT;   
+
+BEGIN   
+ FTCH : fetch PORT MAP(clk,rst,PCAddr,MEMAddr,instruction);
+ DCDR : Decoder PORT MAP(clk,
+                         instruction,Interrupts,
+                         ALUop,sel,
+                         Rdx,Rdy,Wr,
+                         MEMAddr,Offset,
+                         IMdata,Rls,
+                         ROI,
+                         LS,RI,
+                         RegWr,RET);  
+ EXCT : execute PORT MAP(clk,
+                         ALUop,Sel,
+                         Rdx,Rdy,Wr,WrOut,Offset,IMdata,ROI,
+                         LS,RI,LSOut,Rls,WrBk,RegWr,RET,RET,memd,
+                         ALUOut,ACC,
+                         rgstr_bnk,Interrupts,IHInterrupts);                           
+ WRTBK : WriteBK PORT MAP(clk,LSOut,RegWr,WrOut,memd,IHInterrupts,ClkCycle,rgstr_bnk);                                                     
+ IH : InterruptHandler PORT MAP(IHInterrupts,ClkCycle,RET,MEMAddr,rgstr_bnk,PCAddr);
+END pipeline;

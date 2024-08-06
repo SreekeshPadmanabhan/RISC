@@ -1,0 +1,160 @@
+--===========================================================================
+-- NbFa : N Bit Full Adder [+]
+--===========================================================================
+library ieee;
+use ieee.std_logic_1164.all;
+-----------------------------------------------
+ENTITY Fa IS
+ PORT (a,b,Cin : IN  STD_LOGIC;
+       sum,Cout: OUT STD_LOGIC);
+END Fa;
+
+ARCHITECTURE Fa OF Fa IS
+signal xor_ab    : STD_LOGIC;
+signal and_ab    : STD_LOGIC;
+signal Cin_xor_ab: STD_LOGIC;
+------------------------------------------------
+COMPONENT and_gate
+PORT(and_in1,and_in2: IN  STD_LOGIC;
+     and_out        : OUT STD_LOGIC);
+END COMPONENT;
+FOR ALL:and_gate USE ENTITY work.and_gate(RTL_and);
+     
+COMPONENT or_gate
+PORT(or_in1,or_in2: IN  STD_LOGIC;
+     or_out       : OUT STD_LOGIC);
+END COMPONENT;
+FOR ALL:or_gate USE ENTITY work.or_gate(RTL_or);
+
+COMPONENT xor_gate
+PORT(xor_in1,xor_in2: IN  STD_LOGIC;
+     xor_out        : OUT STD_LOGIC);
+END COMPONENT;
+FOR ALL:xor_gate USE ENTITY work.xor_gate(RTL_xor);
+------------------------------------------------
+BEGIN
+ xorgate_ab      : xor_gate port map (a,b,xor_ab);           --xor:a.Bx +b.Ax
+ andgate_ab      : and_gate port map (a,b,and_ab);                      --and
+ and_Cin_xor_ab  : and_gate port map (Cin,xor_ab,Cin_xor_ab);           --and
+   
+ xor_sum : xor_gate port map (Cin,xor_ab,sum);                    --S=CinXaXb
+ or_Cout : or_gate port map (Cin_xor_ab,and_ab,Cout);   --C=Cin.(a X b)+(a.b)
+END Fa;
+
+--===========================================================================
+-- NbFa : N Bit Full Adder [+]
+--===========================================================================
+library ieee;
+use ieee.std_logic_1164.all;
+-----------------------------------------------------------------------------
+ENTITY NbFa IS
+ GENERIC(N:integer:=8); 
+ PORT (a,b : IN  STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+       s   : OUT STD_LOGIC_VECTOR(N-1 DOWNTO 0));
+END;
+
+ARCHITECTURE NbFa OF NbFa IS
+signal c    : STD_LOGIC_VECTOR(N DOWNTO 0);                            --t
+signal Cin  : STD_LOGIC:='0';
+signal Cout : STD_LOGIC:='0';
+
+COMPONENT Fa
+ PORT (a,b,Cin : IN  STD_LOGIC;
+       sum,Cout: OUT STD_LOGIC);
+END COMPONENT;
+FOR ALL:Fa use entity work.Fa(Fa);
+
+BEGIN
+ c(0)<=Cin; Cout<=c(N);
+ FA_gen : for i in 0 to N-1 generate
+  FA_i : Fa port map(a(i),b(i),c(i),s(i),c(i+1));
+ end generate;  
+ END NbFa;
+
+--===========================================================================
+-- Twos Complement : N Bit Twos [-]
+--===========================================================================
+library IEEE;
+use IEEE.std_logic_1164.all;
+USE ieee.std_logic_misc.all;
+USE ieee.std_logic_arith.all;
+--------------------------------------
+ENTITY twos_complement is
+  GENERIC(N:integer:=8);
+  PORT (subtractand : IN  STD_LOGIC_VECTOR(N-1 downto 0);
+        twos        : OUT STD_LOGIC_VECTOR(N-1 downto 0));
+END twos_complement;
+ 
+ARCHITECTURE twos_complement OF twos_complement IS
+ SIGNAL Cin : STD_LOGIC :='0'; 
+ SIGNAL Cout: STD_LOGIC :='0';
+ SIGNAL ones,plusone: STD_LOGIC_VECTOR(N-1 downto 0);
+ 
+ COMPONENT NbFa
+ PORT (a,b: IN  STD_LOGIC_VECTOR(N-1 downto 0);
+       s  : OUT STD_LOGIC_VECTOR(N-1 downto 0));
+ END COMPONENT;
+ --FOR ALL : NbFa USE ENTITY NbFa(NbFa);
+ 
+BEGIN
+ ones <= NOT subtractand;
+ plusone <= (0 =>'1',others => '0');
+ FbComplement : NbFa PORT MAP (ones,plusone,twos);
+END twos_complement;
+
+--===========================================================================
+-- AS : Adder Subtractor [+-]
+--===========================================================================
+library IEEE;
+use IEEE.std_logic_1164.all;
+USE ieee.std_logic_misc.all;
+USE ieee.std_logic_arith.all;
+--------------------------------------
+ENTITY AS IS
+ GENERIC(N:integer:=8);
+ PORT (as    :IN  STD_LOGIC_VECTOR(3 downto 0):="0000"; 
+       A,B   :IN  STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+       Cin   :IN  STD_LOGIC:='0';
+       S     :OUT STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+       Cout  :OUT STD_LOGIC:='0');  
+END;
+
+ARCHITECTURE AS OF AS IS
+SIGNAL btwos: STD_LOGIC_VECTOR(N-1 downto 0);
+
+COMPONENT NbFa
+ GENERIC(N:integer:=8);
+ PORT (A,B : IN  STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+       S   : OUT STD_LOGIC_VECTOR(N-1 DOWNTO 0));
+END COMPONENT;
+FOR ALL:NbFa use entity work.NbFa(NbFa); 
+
+COMPONENT twos_complement
+   GENERIC(N:integer:=8);
+ PORT (subtractand : IN  STD_LOGIC_VECTOR(N-1 downto 0);
+       twos        : OUT STD_LOGIC_VECTOR(N-1 downto 0));
+END COMPONENT;
+FOR ALL: twos_complement USE ENTITY work.twos_complement(twos_complement);
+
+BEGIN
+
+AS_0000:if (as="0000") generate
+ FFA : NbFa PORT MAP (A,B,S); 
+end generate;
+
+AS_0001:if (as="0001") generate
+ negativeB : twos_complement PORT MAP(B,Btwos);
+ FFA : NbFa PORT MAP (A,Btwos,S); 
+end generate;
+
+-- blkFbFa: BLOCK(as="0000")
+-- begin 
+-- FFA : NbFa PORT MAP (A,B,S); 
+-- end BLOCK blkFbFa;
+
+-- blkcmplmnt: BLOCK(as="0001")
+-- begin                
+-- negativeb : twos_complement PORT MAP(B,Btwos);
+-- FFA : NbFa PORT MAP (A,Btwos,S); 
+-- end BLOCK blkcmplmnt;
+END AS;

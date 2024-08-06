@@ -1,0 +1,127 @@
+--==========================================================================================
+-- 1.Memory Pkg <100x16
+--==========================================================================================
+LIBRARY ieee;
+USE ieee.std_logic_1164.all;
+PACKAGE memory IS
+TYPE mem_array IS ARRAY (0 to 26) OF STD_LOGIC_VECTOR(15 DOWNTO 0);                 --19x16
+CONSTANT MEM  :mem_array := ("0000000110101010",                                    --IMM(0)
+---------------------------------------------------------------------------------------------
+                             "0001000000000000",                                    --NOP(1)
+                             "0010000000010010",                                    --ADD(2)
+                             "0010000100010010",                                    --SUB(3)
+                             "0011000000000010",                                    --INC(4)
+                             "0011000100000010",                                    --DEC(5)
+                             "0100000000010010",                                    --SHL(6)
+                             "0100000100010010",                                    --SHR(7)
+---------------------------------------------------------------------------------------------                                     
+                             "0101000000010010",                                    --NOT(8)
+                             "0101000100010010",                                    --NOR(9)
+                             "0101001000010010",                                    --NAND(10)
+                             "0101001100010010",                                    --XOR(11) 
+                             "0101010000010010",                                    --AND(12)
+                             "0101010100010010",                                    --OR(13)
+                             "0101011000010010",                                    --CLR(14)
+                             "0101011100010010",                                    --SET(15)
+                             "0101111100010010",                                    --SLT(16)
+                             "0101100000010010",                                    --MOV(17)                             
+                             "0111000000000000",                                    --EIN(18)
+---------------------------------------------------------------------------------------------                             
+                             "1000000000010010",                                    --LDIN(19)
+                             "1001000000010010",                                    --STIN(20)
+                             "1010000000010010",                                    --LDRG(21)
+                             "1011000000010010",                                    --STRG(22)
+--------------------------------------------------------------------------------------------                                                          
+                             "1111000000010010",                                    --JMP(23)
+                             "1111000100000010",                                    --JZ0(24)
+                             "1111001000000010",                                    --JZ0(25)
+                             "1111001100000000");                                   --RETI(26)                    
+END memory;
+
+--==========================================================================================
+-- PC : Points at address of Instruction Memory; 6 bit
+--==========================================================================================
+LIBRARY ieee;
+USE ieee.std_logic_1164.all;
+USE IEEE.STD_LOGIC_UNSIGNED.ALL;
+USE IEEE.STD_LOGIC_ARITH.ALL;
+
+ENTITY PC IS
+ GENERIC(N:integer:=12); 
+ PORT(clk,rst   : IN  STD_LOGIC;
+      PCAddrIn  : INOUT STD_LOGIC_VECTOR(N-1 DOWNTO 0);                         --change PC
+      PCBuffer  : BUFFER STD_LOGIC_VECTOR(N-1 DOWNTO 0):= "000000000000" ;      --Buffer PC
+      MEMAddr   : OUT STD_LOGIC_VECTOR(N-1 DOWNTO 0));                      --Instrctn Ftch
+END PC;
+
+ARCHITECTURE PC OF PC IS
+BEGIN
+ PROCESS(clk,rst,PCAddrIn,PCBuffer)
+ BEGIN
+  IF(rst = '1') THEN                                                                --rst=1
+    MEMAddr <= "000000000000";
+  ELSif (clk'event and clk = '1') THEN                                              --rst=0
+    MEMAddr     <= PCAddrIn;
+    PCBuffer    <= PCAddrIn + 1;                                                      --+1
+    PCAddrIn    <= PCBuffer;
+  END IF;
+ END PROCESS;
+END PC;
+
+--==========================================================================================
+-- IM  : memory(x) <= "XXXXXXXXXXXXXXXX";
+--==========================================================================================
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.all;
+use IEEE.STD_LOGIC_ARITH.ALL;
+use IEEE.STD_LOGIC_UNSIGNED.ALL;
+use IEEE.NUMERIC_STD.ALL;
+USE work.memory.all;
+
+ENTITY IM IS
+ PORT(address     :IN  STD_LOGIC_VECTOR(11 DOWNTO 0);                          --PC Address
+      instruction :OUT STD_LOGIC_VECTOR(15 DOWNTO 0));
+END IM;   
+
+ARCHITECTURE IM OF IM IS
+BEGIN
+ instruction <= mem(conv_integer(address));
+END IM; 
+
+--==========================================================================================
+-- fetch : Fetches Instruction pointed by PC
+--==========================================================================================
+LIBRARY ieee;
+USE ieee.std_logic_1164.all;
+USE ieee.std_logic_misc.all;
+USE ieee.std_logic_arith.all;
+USE ieee.std_logic_unsigned.all;
+USE ieee.std_logic_arith.all;
+use IEEE.numeric_std.ALL;
+
+ENTITY fetch is
+  GENERIC(N:integer:=16);
+  PORT (clk,rst     : IN  STD_LOGIC;
+        PCAddr      : INOUT  STD_LOGIC_VECTOR(11 DOWNTO 0):= "000000000000" ;
+        MEMAddr     : BUFFER STD_LOGIC_VECTOR(11 DOWNTO 0);
+        instruction : OUT STD_LOGIC_VECTOR(15 DOWNTO 0));
+END fetch;
+
+ARCHITECTURE fetch OF fetch IS
+signal PCBuffer: STD_LOGIC_VECTOR(11 DOWNTO 0);
+COMPONENT PC
+PORT (clk,rst   : IN  STD_LOGIC;
+      PCAddrIn  : INOUT STD_LOGIC_VECTOR(11 DOWNTO 0);
+      PCBuffer : BUFFER STD_LOGIC_VECTOR(11 DOWNTO 0);                            --change PC
+      MEMAddr   : OUT STD_LOGIC_VECTOR(11 DOWNTO 0));
+END COMPONENT;
+
+COMPONENT IM
+PORT(address     :IN  STD_LOGIC_VECTOR(11 DOWNTO 0);                             --PC Address
+     instruction :OUT STD_LOGIC_VECTOR(15 DOWNTO 0));
+END COMPONENT;
+
+BEGIN  
+ PRGM_CNTR       : PC PORT MAP(clk,rst,PCAddr,PCBuffer,MEMaddr);          --+1;Instrctn Addrs
+ INSTRUCTION_MEM : IM PORT MAP(MEMAddr,Instruction);                            --Instruction
+END fetch;

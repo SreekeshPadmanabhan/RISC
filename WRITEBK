@@ -1,0 +1,38 @@
+--===========================================================================
+-- WriteBack : Memory/ALU to Register On Clk
+--===========================================================================
+LIBRARY IEEE; 
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.STD_LOGIC_ARITH.ALL;
+USE IEEE.STD_LOGIC_UNSIGNED.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+USE WORK.reg_dmem.ALL;
+
+ENTITY WriteBK IS
+ PORT(clk         : IN STD_LOGIC;
+      LS          : IN  STD_LOGIC;
+      RegWr       : IN  BIT;  
+      Wr          : IN  STD_LOGIC_VECTOR(3 DOWNTO 0);                  
+      memd        : IN  STD_LOGIC_VECTOR(7 DOWNTO 0);  
+              
+      Interrupts  : INOUT  STD_LOGIC_VECTOR(3 DOWNTO 0);               --Copy2SP
+      ClkCycle    : OUT  STD_LOGIC_VECTOR(1 DOWNTO 0);              --Clk 2
+      rgstr_bnk   : OUT rgstrs);
+END WriteBK;   
+
+ARCHITECTURE WriteBK OF WriteBK IS
+signal WrBk : STD_LOGIC_VECTOR(7 DOWNTO 0);
+BEGIN
+PROCESS(clk,ls,RegWr,Wr,memd,Interrupts)
+ BEGIN 
+  IF (clk'event and clk = '1') THEN
+  IF (LS = '1' and RegWr ='1') THEN    
+   rgstr(conv_integer(Wr)) <= memd;
+  END IF;  
+     
+  IF (Interrupts /= "0000") THEN  
+   ClkCycle<="10";rgstr_bnk <= rgstr; 
+  END IF;            
+ END IF;
+END PROCESS;
+END WriteBK;
